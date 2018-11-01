@@ -1,9 +1,55 @@
+import re
+import cgi
+
 import string
 from io import BytesIO
 import gzip
 import zlib
 
 from .TextParser import TextParser
+
+from wfuzz.utils import python2_3_convert_from_unicode
+
+
+def get_encoding_from_headers(headers):
+    """Returns encodings from given HTTP Header Dict.
+
+    :param headers: dictionary to extract encoding from.
+    :rtype: str
+    """
+
+    content_type = headers.get('Content-Type')
+
+    if not content_type:
+        return None
+
+    content_type, params = cgi.parse_header(content_type)
+
+    if 'charset' in params:
+        return params['charset'].strip("'\"")
+
+    if 'text' in content_type:
+        return 'ISO-8859-1'
+
+    if 'image' in content_type:
+        return 'utf-8'
+
+    if 'application/json' in content_type:
+        return 'utf-8'
+
+
+def get_encodings_from_content(content):
+    """Returns encodings from given content string.
+
+    :param content: bytestring to extract encodings from.
+    """
+    charset_re = re.compile(r'<meta.*?charset=["\']*(.+?)["\'>]', flags=re.I)
+    pragma_re = re.compile(r'<meta.*?content=["\']*;?charset=(.+?)["\'>]', flags=re.I)
+    xml_re = re.compile(r'^<\?xml.*?encoding=["\']*(.+?)["\'>]')
+
+    return (charset_re.findall(content) +
+            pragma_re.findall(content) +
+            xml_re.findall(content))
 
 
 class Response:
@@ -92,9 +138,10 @@ class Response:
                 self._headers = []
 
                 tp = TextParser()
-                tp.setSource("string", rawheader.decode('utf-8', errors='replace'))
+                rawheader = python2_3_convert_from_unicode(rawheader.decode("utf-8", errors='replace'))
+                tp.setSource("string", rawheader)
 
-                tp.readUntil("(HTTP\S*) ([0-9]+)")
+                tp.readUntil(r"(HTTP\S*) ([0-9]+)")
                 while True:
                     while True:
                             try:
@@ -110,7 +157,7 @@ class Response:
                             if self.code != "100":
                                     break
                             else:
-                                tp.readUntil("(HTTP\S*) ([0-9]+)")
+                                tp.readUntil(r"(HTTP\S*) ([0-9]+)")
 
                     self.code = int(self.code)
 
@@ -123,7 +170,7 @@ class Response:
 
                     # curl sometimes sends two headers when using follow, 302 and the final header
                     tp.readLine()
-                    if not tp.search("(HTTP\S*) ([0-9]+)"):
+                    if not tp.search(r"(HTTP\S*) ([0-9]+)"):
                         break
                     else:
                         self._headers = []
@@ -169,4 +216,11 @@ class Response:
                         rawbody = deflated_data
                         self.delHeader("Content-Encoding")
 
-                self.__content = rawbody.decode('utf-8', errors='replace')
+                # Try to get charset encoding from headers
+                content_encoding = get_encoding_from_headers(dict(self.getHeaders()))
+
+                # fallback to default encoding
+                if content_encoding is None:
+                    content_encoding = "utf-8"
+
+                self.__content = python2_3_convert_from_unicode(rawbody.decode(content_encoding, errors='replace'))

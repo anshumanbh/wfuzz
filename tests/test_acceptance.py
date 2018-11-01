@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 import os
 import unittest
 import tempfile
@@ -39,15 +42,29 @@ testing_tests = [
 ]
 
 basic_tests = [
+    # encoding tests
+    ("test_encode_cookie2_utf8_return", "%s/anything" % HTTPBIN_URL, [["は国"]], dict(cookie=["test=FUZZ"], filter="content~'test=\\\\u00e3\\\\u0081\\\\u00af\\\\u00e5\\\\u009b\\\\u00bd'"), [(200, '/anything')], None),
+    ("test_encode_header_utf8_return", "%s/headers" % HTTPBIN_URL, [["は国"]], dict(headers=[("myheader", "FUZZ")], filter="content~'Myheader' and content~'\\\\u00e3\\\\u0081\\\\u00af\\\\u00e5\\\\u009b\\\\u00bd'"), [(200, '/headers')], None),
+    ("test_encode_path", "%s/FUZZ" % HTTPBIN_URL, [["は国"]], dict(), [(404, '/は国')], None),
+    ("test_encode_basic_auth", "%s/basic-auth/FUZZ/FUZZ" % HTTPBIN_URL, [["は国"]], dict(auth=("basic", "FUZZ:FUZZ")), [(200, '/basic-auth/は国/は国')], None),
+    # ("test_encode_postdata", "%s/anything" % HTTPBIN_URL, [["は国"]], dict(postdata="a=FUZZ", filter="content~'は国'"), [(200, '/anything')], None),
+    ("test_encode_postdata", "%s/anything" % HTTPBIN_URL, [["は国"]], dict(postdata="a=FUZZ", filter="content~'\\\\u306f\\\\u56fd'"), [(200, '/anything')], None),
+    ("test_encode_url_filter", "%s/FUZZ" % HTTPBIN_URL, [["は国"]], dict(filter="url~'は国'"), [(404, '/は国')], None),
+    # ("test_encode_var", "%s/anything?var=FUZZ" % HTTPBIN_URL, [["は国"]], dict(filter="content~'\"は国\"'"), [(200, '/anything')], None),
+    ("test_encode_var", "%s/anything?var=FUZZ" % HTTPBIN_URL, [["は国"]], dict(filter="content~'\"\\\\u306f\\\\u56fd\"'"), [(200, '/anything')], None),
+    ("test_encode_redirect", "%s/redirect-to?url=FUZZ" % HTTPBIN_URL, [["は国"]], dict(filter="headers.response.Location='%C3%A3%C2%81%C2%AF%C3%A5%C2%9B%C2%BD'"), [(302, '/redirect-to')], None),
+    # ("test_encode_cookie", "%s/cookies" % HTTPBIN_URL, [["は国"]], dict(cookie=["cookie1=FUZZ"], follow=True, filter="content~FUZZ"), [(200, '/cookies')], None),
+    ("test_encode_cookie", "%s/cookies" % HTTPBIN_URL, [["は国"]], dict(cookie=["cookie1=FUZZ"], follow=True, filter="content~'\\\\u306f\\\\u56fd'"), [(200, '/cookies')], None),
+
     # postdata tests
     # pycurl does not allow it ("test_get_postdata", "%s/FUZZ?var=1&var2=2" % HTTPBIN_URL, [["anything"]], dict(postdata='a=1', filter="content~'\"form\":{\"a\":\"1\"}'"), [(200, '/anything')], None),
-    ("test_allmethods_postdata", "%s/FUZZ?var=1&var2=2" % HTTPBIN_URL, [["anything"], ['PUT', 'POST', 'DELETE'], ['333888']], dict(method='FUZ2Z', postdata='a=FUZ3Z', filter="content~FUZ2Z and content~'\"form\":{\"a\":\"' and content~FUZ3Z"), [(200, '/anything')] * 3, None),
+    ("test_allmethods_postdata", "%s/FUZZ?var=1&var2=2" % HTTPBIN_URL, [["anything"], ['PUT', 'POST', 'DELETE'], ['333888']], dict(method='FUZ2Z', postdata='a=FUZ3Z', filter="content~FUZ2Z and content~'\"a\": \"' and content~FUZ3Z"), [(200, '/anything')] * 3, None),
 
     # httpbin extra tests
-    ("test_gzip", "%s/FUZZ" % HTTPBIN_URL, [["gzip"]], dict(filter="content~'\"gzipped\":true'"), [(200, '/gzip')], None),
+    ("test_gzip", "%s/FUZZ" % HTTPBIN_URL, [["gzip"]], dict(filter="content~'\"gzipped\": true'"), [(200, '/gzip')], None),
     ("test_response_utf8", "%s/encoding/FUZZ" % HTTPBIN_URL, [["utf8"]], dict(), [(200, '/encoding/utf8')], None),
     ("test_image", "%s/image/FUZZ" % HTTPBIN_URL, [["jpeg"]], dict(filter="content~'JFIF'"), [(200, '/image/jpeg')], None),
-    ("test_deflate", "%s/FUZZ" % HTTPBIN_URL, [["deflate"]], dict(filter="content~'\"deflated\":true'"), [(200, '/deflate')], None),
+    ("test_deflate", "%s/FUZZ" % HTTPBIN_URL, [["deflate"]], dict(filter="content~'\"deflated\": true'"), [(200, '/deflate')], None),
 
     ("test_robots_disallow", "%s/FUZZ" % HTTPBIN_URL, [["robots.txt"]], dict(script="robots"), [(200, '/deny'), (200, '/robots.txt')], None),
     ("test_response_base64", "%s/base64/FUZZ" % HTTPBIN_URL, None, dict(filter="content~'HTTPBIN is awesome'", payloads=[("list", dict(values="HTTPBIN is awesome", encoder=["base64"]))]), [(200, '/base64/SFRUUEJJTiBpcyBhd2Vzb21l')], None),
@@ -78,6 +95,7 @@ basic_tests = [
     ("test_basic_header_name_fuzz", "%s" % ECHO_URL, [["onevalue", "twovalue"]], dict(headers=[("FUZZ", "myheadervalue")], filter="content~': myheadervalue' and content~FUZZ"), [(200, '/echo'), (200, '/echo')], None),
     ("test_static_strquery_fuzz", "%s:8000/echo?var=FUZZ" % LOCAL_DOMAIN, [["value1"]], dict(filter="content~'query=var=value1'"), [(200, '/echo')], None),
     ("test_static_strquery2_fuzz", "%s:8000/echo?FUZZ=value1" % LOCAL_DOMAIN, [["var"]], dict(filter="content~'query=var=value1'"), [(200, '/echo')], None),
+    ("test_basic_cookie_fuzz", "%s/anything" % HTTPBIN_URL, [["cookievalue"]], dict(cookie=["test=FUZZ"], filter="content~FUZZ"), [(200, '/anything')], None),
 
     # url fuzzing
     ("test_url_with_no_path", "http://localhost:8000", [["GET"]], dict(method="FUZZ"), [(200, '/')], None),
@@ -308,6 +326,11 @@ def duplicate_tests_diff_params(test_list, group, next_extra_params, previous_ex
 
     """
     for test_name, url, payloads, params, expected_res, exception_str in test_list:
+
+        # mitmproxy does not go well with encodings. temporary bypass encoding checks with proxy
+        if group == "_proxy_" and "encode" in test_name:
+            continue
+
         next_extra = dict(list(params.items()) + list(next_extra_params.items()))
         new_test = "%s_%s" % (test_name, group)
 
